@@ -10,6 +10,11 @@ const USER_ID = "mohitsk_08052006";
 const EMAIL = "ms1131@srmist.edu.in";
 const ROLL = "RA2311003020514";
 
+// health check
+app.get("/", (req, res) => {
+  res.json({ status: "ok", message: "BFHL API is running" });
+});
+
 // main endpoint
 app.post("/bfhl", (req, res) => {
   try {
