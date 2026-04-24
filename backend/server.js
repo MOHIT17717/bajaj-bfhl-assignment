@@ -5,12 +5,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// -------- your details (change these) --------
+// my details
 const USER_ID = "mohitsk_08052006";
 const EMAIL = "ms1131@srmist.edu.in";
 const ROLL = "RA2311003020514";
 
-// POST /bfhl
+// main endpoint
 app.post("/bfhl", (req, res) => {
   try {
     const data = req.body.data;
@@ -21,9 +21,9 @@ app.post("/bfhl", (req, res) => {
     const invalidEntries = [];
     const duplicateEdges = [];
     const seenEdges = new Set();
-    const validEdges = []; // {parent, child} in order
+    const validEdges = [];
 
-    // Step 1 — validate & deduplicate
+    // validate and remove duplicates
     for (let raw of data) {
       if (typeof raw !== "string") {
         invalidEntries.push(String(raw));
@@ -31,13 +31,13 @@ app.post("/bfhl", (req, res) => {
       }
       const entry = raw.trim();
 
-      // empty string
+      // skip empty
       if (entry === "") {
         invalidEntries.push(raw);
         continue;
       }
 
-      // must match X->Y exactly (single uppercase letters)
+      // check format: single uppercase letter -> single uppercase letter
       const match = entry.match(/^([A-Z])->([A-Z])$/);
       if (!match) {
         invalidEntries.push(raw);
@@ -47,7 +47,7 @@ app.post("/bfhl", (req, res) => {
       const parent = match[1];
       const child = match[2];
 
-      // self-loop
+      // no self loops allowed
       if (parent === child) {
         invalidEntries.push(raw);
         continue;
@@ -55,7 +55,7 @@ app.post("/bfhl", (req, res) => {
 
       const key = parent + "->" + child;
 
-      // duplicate check
+      // already seen this edge?
       if (seenEdges.has(key)) {
         if (!duplicateEdges.includes(key)) {
           duplicateEdges.push(key);
@@ -67,16 +67,16 @@ app.post("/bfhl", (req, res) => {
       validEdges.push({ parent, child });
     }
 
-    // Step 2 — build adjacency list (first parent wins for diamond cases)
-    const childHasParent = {}; // child -> parent (first one wins)
-    const adjList = {};        // parent -> [children]
+    // build the graph - first parent wins if a child has multiple parents
+    const childHasParent = {};
+    const adjList = {};
     const allNodes = new Set();
 
     for (const edge of validEdges) {
       allNodes.add(edge.parent);
       allNodes.add(edge.child);
 
-      // diamond / multi-parent: skip if child already has a parent
+      // skip if this child already has a parent (diamond case)
       if (childHasParent[edge.child] !== undefined) {
         continue;
       }
@@ -87,8 +87,7 @@ app.post("/bfhl", (req, res) => {
       adjList[edge.parent].push(edge.child);
     }
 
-    // Step 3 — find connected components
-    // build undirected neighbor map for grouping
+    // group nodes into connected components using BFS
     const neighbors = {};
     for (const node of allNodes) {
       neighbors[node] = new Set();
@@ -103,7 +102,7 @@ app.post("/bfhl", (req, res) => {
     }
 
     const visited = new Set();
-    const components = []; // each is an array of nodes
+    const components = [];
 
     for (const node of allNodes) {
       if (visited.has(node)) continue;
@@ -123,7 +122,7 @@ app.post("/bfhl", (req, res) => {
       components.push(comp);
     }
 
-    // Step 4 — process each component
+    // process each component - check for cycles, build trees
     const hierarchies = [];
     let totalTrees = 0;
     let totalCycles = 0;
@@ -131,13 +130,13 @@ app.post("/bfhl", (req, res) => {
     let largestRoot = null;
 
     for (const comp of components) {
-      // find roots in this component (nodes that are not a child of anyone)
+      // roots = nodes that are not anyone's child
       const roots = comp.filter((n) => childHasParent[n] === undefined);
 
       if (roots.length === 0) {
-        // pure cycle — every node is someone's child
+        // no root found = pure cycle
         totalCycles++;
-        const root = comp.sort()[0]; // lexicographically smallest
+        const root = comp.sort()[0]; // pick alphabetically smallest
         hierarchies.push({
           root: root,
           tree: {},
@@ -146,7 +145,7 @@ app.post("/bfhl", (req, res) => {
         continue;
       }
 
-      // check for cycles using DFS
+      // DFS to check for cycles
       let hasCycle = false;
       const visitedDFS = new Set();
       const recStack = new Set();
@@ -185,7 +184,7 @@ app.post("/bfhl", (req, res) => {
         continue;
       }
 
-      // no cycle — build the tree and calculate depth
+      // valid tree - build it and find depth
       const root = roots.sort()[0];
 
       function buildTree(node) {
@@ -214,7 +213,7 @@ app.post("/bfhl", (req, res) => {
       totalTrees++;
       hierarchies.push({ root, tree, depth });
 
-      // track largest tree
+      // update largest if needed
       if (
         depth > largestDepth ||
         (depth === largestDepth && (largestRoot === null || root < largestRoot))
@@ -224,7 +223,7 @@ app.post("/bfhl", (req, res) => {
       }
     }
 
-    // build summary
+    // summary
     const summary = {
       total_trees: totalTrees,
       total_cycles: totalCycles,
